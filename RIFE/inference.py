@@ -15,22 +15,17 @@ if torch.cuda.is_available():
 
 class inference():
     def __init__(self, modelDir='train_log'):
-        try:
-            try:
-                from model.RIFE_HDv2 import Model
-                model = Model()
-                model.load_model(modelDir, -1)
-                print("Loaded v2.x HD model.")
-            except:
-                from train_log.RIFE_HDv3 import Model
-                model = Model()
-                model.load_model(modelDir, -1)
-                print("Loaded v3.x HD model.")
-        except:
-            from model.RIFE_HD import Model
+        if modelDir == 'train_log.large':
+            from model.RIFE2F15C import Model
             model = Model()
             model.load_model(modelDir, -1)
-            print("Loaded v1.x HD model")
+            print("Loaded RIFE-large model.")
+        else:
+            from train_log.RIFE_HDv3 import Model
+            model = Model()
+            model.load_model(modelDir, -1)
+            print("Loaded v3.x HD model.")
+
         model.eval()
         model.device()
         self.model = model

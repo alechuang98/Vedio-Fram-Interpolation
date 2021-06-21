@@ -20,7 +20,7 @@ def psnr(img1, img2):
 def ssim(img1, img2):
     return structural_similarity(img1.astype(np.float32)/255., img2.astype(np.float32)/255., gaussian_weights=True, sigma=1.5, use_sample_covariance=False, multichannel=True)
 
-inf = inference()
+inf = inference('train_log.large')
 
 if __name__ == '__main__':
 
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     total_psnr = 0
     total_ssim = 0
     for sq in tqdm(sequences):
-        for i in range(12):
+        for i in tqdm(range(12), leave=False):
             # read inputs
             I0 = '../data/testing/1_30fps_to_240fps/'+sq+'/'+str(i)+'/input/{:0>5d}.jpg'.format(i*8)
             I1 = '../data/testing/1_30fps_to_240fps/'+sq+'/'+str(i)+'/input/{:0>5d}.jpg'.format(i*8+8)
@@ -59,7 +59,7 @@ if __name__ == '__main__':
             if not os.path.exists(out_dir):
                 pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
         
-            for j in range(1, 8):
+            for j in tqdm(range(1, 8), leave=False):
                 cv2.imwrite(out_dir+'{:0>5d}.jpg'.format(j+i*8), img[j], [cv2.IMWRITE_JPEG_QUALITY, 100])
 
 
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     total_ssim = 0
     cnt = 0
     for sq in tqdm(sequences):
-        for i in range(8):
+        for i in tqdm(range(8), leave=False):
             # read inputs
             I0 = '../data/testing/2_24fps_to_60fps/'+sq+'/'+str(i)+'/input/{:0>5d}.jpg'.format(i*10)
             I1 = '../data/testing/2_24fps_to_60fps/'+sq+'/'+str(i)+'/input/{:0>5d}.jpg'.format(i*10+10)
