@@ -6,7 +6,7 @@ import torch.optim as optim
 import itertools
 from model.warplayer import warp
 from torch.nn.parallel import DistributedDataParallel as DDP
-from model.IFNet2F15C import *
+from model.ExtNet import *
 import torch.nn.functional as F
 from model.loss import *
 
@@ -105,12 +105,12 @@ class FusionNet(nn.Module):
 
 class Model:
     def __init__(self, local_rank=-1):
-        self.flownet = IFNet()
+        self.extnet = ExtNet()
         self.contextnet = ContextNet()
         self.fusionnet = FusionNet()
         self.device()
         self.optimG = AdamW(itertools.chain(
-            self.flownet.parameters(),
+            self.extnet.parameters(),
             self.contextnet.parameters(),
             self.fusionnet.parameters()), lr=1e-6, weight_decay=1e-4)
         self.schedulerG = optim.lr_scheduler.CyclicLR(
@@ -119,7 +119,7 @@ class Model:
         self.ter = Ternary()
         self.sobel = SOBEL()
         if local_rank != -1:
-            self.flownet = DDP(self.flownet, device_ids=[
+            self.extnet = DDP(self.extnet, device_ids=[
                                local_rank], output_device=local_rank)
             self.contextnet = DDP(self.contextnet, device_ids=[
                                   local_rank], output_device=local_rank)
@@ -127,17 +127,17 @@ class Model:
                                  local_rank], output_device=local_rank)
 
     def train(self):
-        self.flownet.train()
+        self.extnet.train()
         self.contextnet.train()
         self.fusionnet.train()
 
     def eval(self):
-        self.flownet.eval()
+        self.extnet.eval()
         self.contextnet.eval()
         self.fusionnet.eval()
 
     def device(self):
-        self.flownet.to(device)
+        self.extnet.to(device)
         self.contextnet.to(device)
         self.fusionnet.to(device)
 
@@ -152,8 +152,8 @@ class Model:
             else:
                 return param
         if rank <= 0:
-            self.flownet.load_state_dict(
-                convert(torch.load('{}/flownet.pkl'.format(path), map_location=device)))
+            self.extnet.load_state_dict(
+                convert(torch.load('{}/extnet.pkl'.format(path), map_location=device)))
             self.contextnet.load_state_dict(
                 convert(torch.load('{}/contextnet.pkl'.format(path), map_location=device)))
             self.fusionnet.load_state_dict(
@@ -161,11 +161,11 @@ class Model:
 
     def save_model(self, path, rank):
         if rank == 0:
-            torch.save(self.flownet.state_dict(), '{}/flownet.pkl'.format(path))
+            torch.save(self.extnet.state_dict(), '{}/extnet.pkl'.format(path))
             torch.save(self.contextnet.state_dict(), '{}/contextnet.pkl'.format(path))
             torch.save(self.fusionnet.state_dict(), '{}/unet.pkl'.format(path))
 
-    def predict(self, imgs, flow, training=True, flow_gt=None):
+    def predict(self, imgs, flow, training=True):
         img0 = imgs[:, :3]
         img1 = imgs[:, 3:]
         flow = F.interpolate(flow, scale_factor=2.0, mode="bilinear",
@@ -173,7 +173,7 @@ class Model:
         c0 = self.contextnet(img0, flow[:, :2])
         c1 = self.contextnet(img1, flow[:, 2:4])
         refine_output, warped_img0, warped_img1, warped_img0_gt, warped_img1_gt = self.fusionnet(
-            img0, img1, flow, c0, c1, flow_gt)
+            img0, img1, flow, c0, c1, None)
         res = torch.sigmoid(refine_output[:, :3]) * 2 - 1
         mask = torch.sigmoid(refine_output[:, 3:4])
         merged_img = warped_img0 * mask + warped_img1 * (1 - mask)
@@ -186,19 +186,19 @@ class Model:
 
     def inference(self, img0, img1, flow):
         imgs = torch.cat((img0, img1), 1)
-        # flow, _ = self.flownet(imgs)
+        flow, _ = self.extnet(imgs)
         return self.predict(imgs, flow, training=False)
 
-    def update(self, imgs, gt, learning_rate=0, mul=1, training=True, flow_gt=None):
+    def update(self, imgs, flow, gt, learning_rate=0, mul=1, training=True):
         for param_group in self.optimG.param_groups:
             param_group['lr'] = learning_rate
         if training:
             self.train()
         else:
             self.eval()
-        flow, flow_list = self.flownet(imgs)
+
         pred, mask, merged_img, warped_img0, warped_img1, warped_img0_gt, warped_img1_gt = self.predict(
-            imgs, flow, flow_gt=flow_gt)
+            imgs, flow)
         loss_ter = self.ter(pred, gt).mean()
         if training:
             with torch.no_grad():
@@ -207,24 +207,17 @@ class Model:
                     merged_img - gt).sum(1, True).float().detach()
                 loss_mask = F.interpolate(loss_mask, scale_factor=0.5, mode="bilinear",
                                           align_corners=False).detach()
-                flow_gt = (F.interpolate(flow_gt, scale_factor=0.5, mode="bilinear",
-                                         align_corners=False) * 0.5).detach()
-            loss_cons = 0
-            for i in range(3):
-                loss_cons += self.epe(flow_list[i][:, :2], flow_gt[:, :2], 1)
-                loss_cons += self.epe(flow_list[i][:, 2:4], flow_gt[:, 2:4], 1)
-            loss_cons = loss_cons.mean() * 0.01
+
         else:
-            loss_cons = torch.tensor([0])
             loss_flow = torch.abs(warped_img0 - gt).mean()
             loss_mask = 1
         loss_l1 = (((pred - gt) ** 2 + 1e-6) ** 0.5).mean()
         if training:
             self.optimG.zero_grad()
-            loss_G = loss_l1 + loss_cons + loss_ter
+            loss_G = loss_l1 + loss_ter
             loss_G.backward()
             self.optimG.step()
-        return pred, merged_img, flow, loss_l1, loss_flow, loss_cons, loss_ter, loss_mask
+        return pred, merged_img, loss_l1, loss_flow, loss_ter, loss_mask
 
 
 if __name__ == '__main__':

@@ -3,3 +3,4 @@ data/
 *.pyc
 *.pyo
 .vscode/
+RIFE/dataset

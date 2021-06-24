@@ -103,7 +103,7 @@ class inference():
                 for inference_cycle in range(rmaxcycles):
                     pil_img0 = Image.fromarray(cv2.cvtColor((tmp_img0[0] * 255).byte().cpu().numpy().transpose(1, 2, 0), cv2.COLOR_BGR2RGB))
                     pil_img1 = Image.fromarray(cv2.cvtColor((tmp_img1[0] * 255).byte().cpu().numpy().transpose(1, 2, 0), cv2.COLOR_BGR2RGB))
-                    flow = getFt0Ft1(np.array(pil_img0), np.array(npil_img1), self.raft_model)
+                    flow = getFt0Ft1(np.array(pil_img0), np.array(pil_img1), self.raft_model)
 
                     middle = self.model.inference(tmp_img0, tmp_img1, flow)
                     middle_ratio = ( img0_ratio + img1_ratio ) / 2
