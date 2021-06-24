@@ -8,7 +8,6 @@ import pathlib
 from tqdm import tqdm
 from inference import inference
 
-
 def psnr(img1, img2):
     mse = np.mean((img1.astype(np.float32) - img2.astype(np.float32)) ** 2)
     if mse == 0:
@@ -20,7 +19,7 @@ def psnr(img1, img2):
 def ssim(img1, img2):
     return structural_similarity(img1.astype(np.float32)/255., img2.astype(np.float32)/255., gaussian_weights=True, sigma=1.5, use_sample_covariance=False, multichannel=True)
 
-inf = inference('train_log')
+inf = inference('train_log.large')
 
 if __name__ == '__main__':
 
